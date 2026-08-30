@@ -56,13 +56,18 @@ index 8d2992afbe79af270a0d08c38203166d3afc03f1..bd8dc7fd2bc01a4ec9ade821bbd5d7bd
 diff --git a/templates/nsis/include/extractAppPackage.nsh b/templates/nsis/include/extractAppPackage.nsh
 --- a/templates/nsis/include/extractAppPackage.nsh
 +++ b/templates/nsis/include/extractAppPackage.nsh
-@@ -92,47 +92,6 @@
+@@ -90,49 +90,8 @@
+ !macroend
+ 
  !macro extractUsing7za FILE
 -  Push $OUTDIR
 -  CreateDirectory "$PLUGINSDIR\7z-out"
 -  ClearErrors
 -  SetOutPath "$PLUGINSDIR\7z-out"
--  Nsis7z::Extract "${FILE}"
++  # The Desktop package favors install speed over atomic replacement: avoid
++  # writing the entire app to $PLUGINSDIR and copying every file a second time.
++  SetOutPath "$INSTDIR"
+   Nsis7z::Extract "${FILE}"
 -  Pop $R0
 -  SetOutPath $R0
 -
@@ -103,15 +108,13 @@ diff --git a/templates/nsis/include/extractAppPackage.nsh b/templates/nsis/inclu
 -    Goto LoopExtract7za
 -
 -  DoneExtract7za:
-+  # The Desktop package favors install speed over atomic replacement: avoid
-+  # writing the entire app to $PLUGINSDIR and copying every file a second time.
-+  SetOutPath "$INSTDIR"
-+  Nsis7z::Extract "${FILE}"
  !macroend
 diff --git a/templates/nsis/include/installUtil.nsh b/templates/nsis/include/installUtil.nsh
 --- a/templates/nsis/include/installUtil.nsh
 +++ b/templates/nsis/include/installUtil.nsh
-@@ -128,6 +128,11 @@ Function handleUninstallResult
+@@ -126,10 +126,15 @@ Function handleUninstallResult
+   Return
+ 
    ${if} $R0 != 0
 -    MessageBox MB_OK|MB_ICONEXCLAMATION "$(uninstallFailed): $R0"
 -    DetailPrint `Uninstall was not successful. Uninstaller error code: $R0.`
@@ -127,8 +130,9 @@ diff --git a/templates/nsis/include/installUtil.nsh b/templates/nsis/include/ins
 +      Quit
 +    ${endif}
    ${endif}
-@@ -233,4 +238,8 @@ Function uninstallOldVersion
-     CheckResult:
+ FunctionEnd
+ 
+@@ -234,6 +239,10 @@ Function uninstallOldVersion
        ${if} $R0 == 0
          Return
        ${endIf}
@@ -136,3 +140,6 @@ diff --git a/templates/nsis/include/installUtil.nsh b/templates/nsis/include/ins
 +        # Code 2 is handled by the non-atomic in-place replacement path.
 +        Return
 +      ${endIf}
+ 
+     Sleep 1000
+     Goto UninstallLoop
