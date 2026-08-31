@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { applyAdvancedShell } from './advanced-shell.ts'
 import { startRendererBootReporter } from './boot-health.ts'
 import { applyDesktopSettings } from './desktop-settings.ts'
+import { applyDesktopExtras } from './desktop-extras/index.ts'
 import { installDesktopDirectoryPickerBridge } from './directory-picker.ts'
 import { parseDesktopClientEnvironment } from './environment.ts'
 import { applyExtendedShell, applyFramedShell } from './extended-shell.ts'
@@ -19,6 +20,13 @@ import { desktopWindowService, provideDesktopWindow } from './window-service.ts'
 
 export { applyAdvancedShell } from './advanced-shell.ts'
 export { applyDesktopSettings } from './desktop-settings.ts'
+export {
+  applyDesktopExtras,
+  applyFindInChat,
+  applyPreferencesShortcut,
+  FIND_IN_CHAT_BINDING,
+  PREFERENCES_BINDINGS,
+} from './desktop-extras/index.ts'
 export { applyExtendedShell, applyFramedShell } from './extended-shell.ts'
 export {
   createDesktopSettingsApi,
@@ -100,6 +108,7 @@ export function apply(ctx: ClientContext): void {
     )
   }
   applyThinkingToggle(ctx)
+  applyDesktopExtras(ctx)
   if (environment.mode === 'advanced') applyAdvancedShell(ctx, environment)
   if (environment.mode === 'extended') applyExtendedShell(ctx, environment, desktopSettings)
   if (environment.platform !== 'linux' && environment.mode === 'compatibility') {
