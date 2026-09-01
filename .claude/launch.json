@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dsh-desktop",
+      "runtimeExecutable": "/usr/local/bin/corepack",
+      "runtimeArgs": [
+        "yarn",
+        "dev"
+      ],
+      "port": 43120
+    }
+  ]
+}

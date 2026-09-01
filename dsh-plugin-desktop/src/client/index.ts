@@ -24,6 +24,8 @@ export {
   applyDesktopExtras,
   applyFindInChat,
   applyPreferencesShortcut,
+  applyTextDrop,
+  applyWorkspaceDecor,
   FIND_IN_CHAT_BINDING,
   PREFERENCES_BINDINGS,
 } from './desktop-extras/index.ts'

@@ -11,6 +11,8 @@
     "tests/client-desktop-settings.spec.ts",
     "tests/client-environment.spec.ts",
     "tests/client-layout-service.spec.ts",
+    "tests/client-decor-paint.spec.ts",
+    "tests/client-workspace-decor.spec.ts",
     "tests/theme-presenter.spec.ts"
   ]
 }

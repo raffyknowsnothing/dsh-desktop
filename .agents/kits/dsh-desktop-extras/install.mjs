@@ -113,9 +113,10 @@ for (const name of readdirSync(toggleSource)) {
   if (!checkOnly) copyFileSync(join(toggleSource, name), target)
 }
 
-// 3. The test spec.
-place(join(KIT, 'files', 'tests', 'client-desktop-extras.spec.ts'),
-  join(TESTS, 'client-desktop-extras.spec.ts'))
+// 3. The test specs.
+const testsSource = join(KIT, 'files', 'tests')
+const specNames = readdirSync(testsSource)
+for (const name of specNames) place(join(testsSource, name), join(TESTS, name))
 
 // 4. Wiring in the client plugin entry.
 if (!existsSync(ENTRY)) fail(`missing ${ENTRY}`)
@@ -138,6 +139,8 @@ entry = ensureAfter(entry, {
   applyDesktopExtras,
   applyFindInChat,
   applyPreferencesShortcut,
+  applyTextDrop,
+  applyWorkspaceDecor,
   FIND_IN_CHAT_BINDING,
   PREFERENCES_BINDINGS,
 } from './desktop-extras/index.ts'`,
@@ -189,21 +192,55 @@ if (problems.length > 0) {
 //    silently dropped from `yarn typecheck`.
 if (!existsSync(TESTS_TSCONFIG)) fail(`missing ${TESTS_TSCONFIG}`)
 let tsconfig = readFileSync(TESTS_TSCONFIG, 'utf8')
-const SPEC_ENTRY = `"tests/client-desktop-extras.spec.ts",`
-if (tsconfig.includes(SPEC_ENTRY)) {
-  skipped.push('tsconfig.tests.client.json (already listed)')
-} else {
-  const anchor = `"tests/client-desktop-settings.spec.ts",`
-  if (!tsconfig.includes(anchor)) {
-    problems.push(
-      `tsconfig.tests.client.json: could not find the anchor entry ${anchor}\n`
-      + `    Add ${SPEC_ENTRY} to the "include" array by hand.`,
-    )
-  } else {
-    changed.push('tsconfig.tests.client.json: include entry')
-    tsconfig = tsconfig.replace(anchor, `${SPEC_ENTRY}\n    ${anchor}`)
-    if (!checkOnly) writeFileSync(TESTS_TSCONFIG, tsconfig)
+let tsconfigTouched = false
+// Position in the array carries no meaning, so every entry goes in above the
+// same anchor rather than alphabetically. What matters is only that each spec
+// is listed at all.
+const TSCONFIG_ANCHOR = `"tests/client-desktop-settings.spec.ts",`
+for (const name of specNames) {
+  const specEntry = `"tests/${name}",`
+  if (tsconfig.includes(specEntry)) {
+    skipped.push(`tsconfig.tests.client.json: ${name} (already listed)`)
+    continue
   }
+  if (!tsconfig.includes(TSCONFIG_ANCHOR)) {
+    problems.push(
+      `tsconfig.tests.client.json: could not find the anchor entry ${TSCONFIG_ANCHOR}\n`
+      + `    Add ${specEntry} to the "include" array by hand.`,
+    )
+    continue
+  }
+  changed.push(`tsconfig.tests.client.json: ${name}`)
+  tsconfig = tsconfig.replace(TSCONFIG_ANCHOR, `${specEntry}\n    ${TSCONFIG_ANCHOR}`)
+  tsconfigTouched = true
+}
+if (tsconfigTouched && !checkOnly) writeFileSync(TESTS_TSCONFIG, tsconfig)
+
+// 6. The Host-side test program compiles tests/**/*.ts too, and it has none of
+//    the client SlotMap merges. A spec that imports a client component drags
+//    that whole type world into the wrong program, so it must be excluded
+//    there exactly as the other client specs are. Skipping this does not fail
+//    the spec; it fails `yarn typecheck` with errors inside node_modules,
+//    which is a long way from the cause.
+const HOST_TESTS_TSCONFIG = join(PACKAGE, 'tsconfig.tests.json')
+if (!existsSync(HOST_TESTS_TSCONFIG)) fail(`missing ${HOST_TESTS_TSCONFIG}`)
+let hostTsconfig = readFileSync(HOST_TESTS_TSCONFIG, 'utf8')
+const HOST_EXCLUDE_ENTRY = `"tests/client-workspace-decor.spec.ts",`
+const HOST_EXCLUDE_ANCHOR = `"tests/client-layout-service.spec.ts",`
+if (hostTsconfig.includes(HOST_EXCLUDE_ENTRY)) {
+  skipped.push('tsconfig.tests.json (already excluded)')
+} else if (!hostTsconfig.includes(HOST_EXCLUDE_ANCHOR)) {
+  problems.push(
+    `tsconfig.tests.json: could not find the anchor entry ${HOST_EXCLUDE_ANCHOR}\n`
+    + `    Add ${HOST_EXCLUDE_ENTRY} to the "exclude" array by hand.`,
+  )
+} else {
+  changed.push('tsconfig.tests.json: exclude entry')
+  hostTsconfig = hostTsconfig.replace(
+    HOST_EXCLUDE_ANCHOR,
+    `${HOST_EXCLUDE_ANCHOR}\n    ${HOST_EXCLUDE_ENTRY}`,
+  )
+  if (!checkOnly) writeFileSync(HOST_TESTS_TSCONFIG, hostTsconfig)
 }
 
 // Report.
