@@ -235,6 +235,9 @@ That last pair is the one worth doing carefully. The drop handler runs in the
 capture phase ahead of upstream's, so a bug there could swallow image drops
 rather than merely failing to inline text.
 
+- Your active skin still renders after a profile plugin update. The skin
+  package was replaced by a differently named one, not bumped in place.
+
 ## Reading the running app
 
 Every DOM assumption in this kit must be confirmed against a running app, not
@@ -304,6 +307,32 @@ them at once:
 for m in dshFindInChat dshWsMenu data-dsh-folder data-composer-input; do printf "%-24s %s\n" "$m" "$(grep -c -- "$m" dsh-plugin-desktop/lib/client.js)"; done
 ```
 
+### Check the profile plugins before launching
+
+A harness release removes exports. Profile plugins pinned to the old API fail
+at boot with an import error, and that error is the first thing seen in the new
+build. Before launching a new build, sweep the profile:
+
+1. List the pins in `~/.dsh/profiles/desktop/package.json` under `dependencies`.
+2. For each third-party plugin, read its declared harness range with
+   `npm view <pkg>@<version> dsh --json` and check that `engines.dsh` covers the
+   new runtime.
+3. Grep the plugin for exports the new runtime removed. Get the tarball URL with
+   `npm view <pkg>@<version> dist.tarball`, download it, then
+   `tar -xzOf <tgz> package/lib/index.js | grep -c "<removed export names>"`
+   and the same for `package/lib/client.js`. Sweep the whole installed profile,
+   not just the plugin that already errored:
+   `grep -rln "<removed export names>" ~/.dsh/profiles/desktop/node_modules`
+4. When a plugin fails the sweep, check npm for a newer release whose
+   `engines.dsh` allows the new runtime and bump the profile pin. Never shim
+   the harness for a third-party plugin.
+5. A plugin is pinned in two places in the profile `package.json`:
+   `dependencies` and `dsh.profile.bundles`. Releases pnpm refuses under its
+   supply-chain policy go in `pnpm-workspace.yaml` under
+   `minimumReleaseAgeExclude` as quoted `name@version` entries. Back edited
+   files up with the existing `.bak-<timestamp>` convention, and run plain
+   `pnpm install` in the profile directory to apply.
+
 ### Quick test, no install
 
 Quit the installed app first. The app takes a single-instance lock
@@ -324,7 +353,12 @@ That runs the repo build. It leaves `/Applications` alone.
 ### Real install
 
 Build an unsigned universal DMG. This runs the full package gate first, so
-give it time:
+give it time. Clean the old outputs first: a stale `dist/` tree reads like a
+real build and the gates and verification will trust it.
+
+```bash
+rm -rf dsh-plugin-desktop/dist deepseek-harness/dist
+```
 
 ```bash
 corepack yarn workspace dsh-plugin-desktop dist:mac-smoke
@@ -337,38 +371,61 @@ The DMG lands in `dsh-plugin-desktop/dist/mac-smoke/`, named for the version in
 Signing and notarization are release-only steps on a credentialed machine
 (`dist:mac`). This artifact is unsigned, which is fine for your own machine.
 
-Before trusting it, confirm the build actually carries the features. Zero here
-means something went wrong and installing it would waste a reinstall:
+Before trusting it, confirm the build actually carries the new runtime. A
+mount left over from an earlier session serves the old volume while looking
+like today's attach, so check and eject first, then attach at a fresh
+mountpoint:
 
 ```bash
-hdiutil attach "dsh-plugin-desktop/dist/mac-smoke/DSH Desktop-2.0.4-universal.dmg" -readonly -nobrowse -mountpoint /tmp/dshdmg
+hdiutil info | grep -B2 -A2 dshdmg
+hdiutil detach /tmp/dshdmg      # only when a stale mount is listed
+hdiutil attach "dsh-plugin-desktop/dist/mac-smoke/DSH Desktop-2.0.4-universal.dmg" -readonly -nobrowse -mountpoint /tmp/dshdmg-new
 ```
+
+Prove the runtime version from the mount itself. It must print the version
+that was just built:
 
 ```bash
-grep -c dshFindInChat "/tmp/dshdmg/DSH Desktop.app/Contents/Resources/app.asar.unpacked/lib/client.js"
+node -e "console.log(require('/tmp/dshdmg-new/DSH Desktop.app/Contents/Resources/app.asar.unpacked/node_modules/@deepseek-ai/dsh-session/package.json').version)"
 ```
 
-Mount at a fixed `-mountpoint` rather than reading `/Volumes`. The volume name
-carries the version (`/Volumes/DSH Desktop 2.0.4-universal`), so a path written
-against one release breaks on the next.
+Then confirm the desktop features and the unarchive verb:
+
+```bash
+for m in dshFindInChat dshWsMenu data-dsh-folder data-composer-input data-dsh-archive-section; do printf "%-24s %s\n" "$m" "$(grep -c -- "$m" "/tmp/dshdmg-new/DSH Desktop.app/Contents/Resources/app.asar.unpacked/lib/client.js")"; done
+grep -c unarchiveSession "/tmp/dshdmg-new/DSH Desktop.app/Contents/Resources/app.asar.unpacked/node_modules/@deepseek-ai/dsh-api-workspace-controller/lib/client.js"
+```
+
+Feature-marker greps alone are not proof: they all matched a stale alpha.1
+mount. Zero matches means something went wrong and installing it would waste a
+reinstall. Prefer a fresh mountpoint each time rather than reusing one. The
+volume name in `/Volumes` carries the version
+(`/Volumes/DSH Desktop 2.0.4-universal`), so a path written against one release
+breaks on the next.
 
 Now quit the app and swap it. Move the old copy to the Trash rather than
 deleting it, so a bad build is one drag away from being undone:
 
 ```bash
 osascript -e 'quit app "DSH Desktop"'
+pgrep -x "DSH Desktop" || echo "quit confirmed"
 ```
+
+The pgrep must print nothing, or the single-instance lock is still held and
+the new build will never start. Both apps share `~/.dsh/profiles/desktop/`, so
+profile edits made for the new build can break the old app if it live-reloads
+them. Finish the swap promptly.
 
 ```bash
 mv "/Applications/DSH Desktop.app" ~/.Trash/"DSH Desktop.app.old-$(date +%Y%m%d-%H%M%S)"
 ```
 
 ```bash
-cp -R "/tmp/dshdmg/DSH Desktop.app" /Applications/
+cp -R "/tmp/dshdmg-new/DSH Desktop.app" /Applications/
 ```
 
 ```bash
-hdiutil detach /tmp/dshdmg
+hdiutil detach /tmp/dshdmg-new
 ```
 
 Open the app and check the behaviours listed under Verify.
