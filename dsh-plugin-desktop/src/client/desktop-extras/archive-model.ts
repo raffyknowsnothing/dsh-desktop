@@ -1,13 +1,13 @@
 /**
- * Desktop archive list model: which archived Sessions the sidebar's Archived
- * group shows, and in what order.
+ * Desktop archive list model: which archived Sessions the sidebar's read-only
+ * Archived group shows, and in what order.
  *
  * Pure and DOM-free, like the rest of the decoration model. The source of
  * truth is the registry-global archive set on the Workspace snapshot
  * (`archivedSessionIds`, archive order) paired with Session summaries from the
  * Sessions snapshot for display titles. Archived Sessions keep their Workspace
  * slot, so this list is the only place they are visible at all — upstream
- * hides the whole set from every grouping surface.
+ * hides the whole set from every grouping surface and ships no unarchive API.
  */
 
 /** One row of the archived list. */
