@@ -1,0 +1,6 @@
+#!/bin/sh
+# Real pnpm for the upstream build. The DSH Desktop app installs its own pnpm
+# wrapper on PATH; that wrapper runs inside Electron and cannot build the
+# submodule. This shim execs corepack's pnpm, which the submodule pins to
+# 11.7.0 via its packageManager field.
+exec corepack pnpm "$@"
