@@ -119,7 +119,7 @@
     "@deepseek-ai/dsh-typert-protocol": "0.1.2-alpha.5",
     "@deepseek-ai/dsh-typert-registry": "0.1.2-alpha.5",
     "@deepseek-ai/dsh-workspace": "0.1.2-alpha.5",
-    "@deepseek-ai/schemastery": "^3.18.1",
+    "@deepseek-ai/schemastery": "^3.18.2",
     "react": "18.3.1"
   },
   "peerDependenciesMeta": {
@@ -244,7 +244,7 @@
     "@deepseek-ai/dsh-typert-protocol": "0.1.2-alpha.5",
     "@deepseek-ai/dsh-typert-registry": "0.1.2-alpha.5",
     "@deepseek-ai/dsh-workspace": "0.1.2-alpha.5",
-    "@deepseek-ai/schemastery": "^3.18.1",
+    "@deepseek-ai/schemastery": "^3.18.2",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.20.0",

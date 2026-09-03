@@ -1,7 +1,7 @@
 diff --git a/lib/plugin-F7ZVfRyo.js b/lib/plugin-F7ZVfRyo.js
 --- a/lib/plugin-F7ZVfRyo.js
 +++ b/lib/plugin-F7ZVfRyo.js
-@@ -108,7 +108,8 @@ function runPlugin(profile, args) {
+@@ -109,7 +109,8 @@
  	const result = spawnSync("pnpm", args.map((argument) => anchorPathSpec(argument, process.cwd())), {
  		cwd: dir,
  		stdio: "inherit",
