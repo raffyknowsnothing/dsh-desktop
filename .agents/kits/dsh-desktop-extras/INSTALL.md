@@ -46,12 +46,16 @@ and dividers pin above a Workspace rather than to a position, so reordering the
 sidebar carries them along.
 
 Upstream hides archived Sessions from every grouping surface and ships no
-archive UI, so this layer also draws a read-only **Archived** group into the
-grouped tree, above the Ungrouped bucket. The header folds and unfolds it;
-clicking a row reopens that Session through `ctx.sessions.open`. Archiving is
-upstream's right-click "Archive session" row action; there is no unarchive API,
-so the group is read-only by construction. The group appears only in the
-grouped view, matching the divider behaviour.
+archive UI, so this layer also draws an **Archived** group into the grouped
+tree, at the bottom below Ungrouped so the archive closes the list instead of
+interrupting it. The header folds and unfolds it; clicking a row reopens that
+Session through `ctx.sessions.open`. Per-Session archiving is upstream's
+right-click "Archive session" row action. Unarchive is a Desktop addition on
+top of upstream's `unarchiveSession` verb: right-click an archived row for
+"Move out of archive", or the Archived header for "Move all out of archive
+(n)". A Workspace row's right-click menu also gains "Archive all sessions (n)",
+which confirms before it archives. The group appears only in the grouped view,
+matching the divider behaviour.
 
 The state lives in `localStorage` under `dsh.desktop.workspace-decor.v1`. It is
 per-machine and never leaves the renderer, which is the honest fit for what it
@@ -103,7 +107,7 @@ the same steps it performs.
 ### 1. Copy the folder
 
 Copy `files/client/desktop-extras/` into `dsh-plugin-desktop/src/client/`.
-Twenty-one source files, no dependencies beyond React and the packages the client
+Twenty-six source files, no dependencies beyond React and the packages the client
 plugin already uses.
 
 ### 2. Wire it into the client plugin
@@ -214,9 +218,12 @@ every DOM half of every feature is not, so these are the checks that matter:
 - "Add divider above" puts a labelled rule above that Workspace. Right-clicking
   the divider renames or removes it. Renaming the Workspace keeps both.
 - Archiving a Session with its right-click "Archive session" action moves it
-  into an "Archived (n)" group in the grouped tree, above Ungrouped. Clicking a
-  row reopens the Session; the header folds the rows. Archiving and reopening
-  survive a reload. There is no unarchive, so the group is read-only by design.
+  into an "Archived (n)" group at the bottom of the grouped tree, below
+  Ungrouped. Clicking a row reopens the Session; the header folds the rows.
+  Right-clicking an archived row offers "Move out of archive"; right-clicking
+  the Archived header offers "Move all out of archive (n)". Right-clicking a
+  Workspace row offers "Archive all sessions (n)", which confirms before it
+  acts. Archiving, restoring, and reopening survive a reload.
 - Dragging a `.md` file onto the chat stages it as a tile above the composer.
   The rail is centred on the composer card and its first tile lines up with the
   draft text, not with the left edge of the conversation column.
@@ -515,10 +522,14 @@ running a search renders no Workspace rows at all, so there is nothing to hang
 them on; they come back with the grouped tree. The Ungrouped bucket takes
 neither a colour nor a divider, because it has no Workspace behind it.
 
-The archived group has the same grouped-view limit, and one more: archiving is
-upstream's, unarchiving does not exist, so a session that lands in the group
-stays there. The group is a view of the registry-global archive set, which is
-durable; it is not per-machine state the way colours and dividers are.
+The archived group has the same grouped-view limit. It is a view of the
+registry-global archive set, which is durable; it is not per-machine state the
+way colours and dividers are.
+
+Unarchive returns a Session to the Workspace that still accounts it, never to a
+different folder, because a Session's Workspace is its working directory and
+there is no cross-Workspace move. Bulk archive and restore run one Session at a
+time and stop on the first failure, so a failed run leaves a known prefix done.
 
 Dividers cannot be dragged. Moving one means removing it and adding it above
 the Workspace you want, which is two right-clicks.

@@ -199,21 +199,6 @@ export function identifyWorkspaceRows(
   return identified
 }
 
-/**
- * The Ungrouped bucket section, when it renders.
- *
- * Upstream appends the bucket after the Workspace sections whenever loose
- * Sessions exist, so it is the one legitimate extra row. The archived group
- * sits directly above it; with no bucket it appends at the end of the tree
- * instead.
- * @param rows - rows in render order.
- * @param workspaceIds - Workspace ids in list order.
- * @returns the bucket's section, or null when there is no extra row.
- */
-export function ungroupedSection(
-  rows: readonly SidebarWorkspaceRow[],
-  workspaceIds: readonly string[],
-): HTMLElement | null {
-  if (rows.length !== workspaceIds.length + 1) return null
-  return rows[workspaceIds.length]?.section ?? null
-}
+// `ungroupedSection` lived here, returning the Ungrouped bucket so the archived
+// group could be inserted before it. The group now appends at the end of the
+// tree instead, below the bucket, so nothing needed the lookup any more.

@@ -50,6 +50,7 @@ export { WorkspaceDecor } from './WorkspaceDecor.tsx'
 export type { WorkspaceDecorInjected, WorkspaceDecorProps } from './WorkspaceDecor.tsx'
 export {
   archiveRowsOf,
+  bulkArchiveTargets,
 } from './archive-model.ts'
 export type { ArchiveRow } from './archive-model.ts'
 export {
@@ -90,7 +91,6 @@ export {
   readWorkspaceRows,
   sidebarRegion,
   sidebarTree,
-  ungroupedSection,
   glyphSpans,
   rowLabel,
   sectionOf,

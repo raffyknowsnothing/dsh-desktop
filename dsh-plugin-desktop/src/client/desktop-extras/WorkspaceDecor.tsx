@@ -23,7 +23,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 // Type-only: merges `useWorkspaces` into the global slot props seat.
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type {} from '../contracts.ts'
-import { archiveRowsOf } from './archive-model.ts'
+import { archiveRowsOf, bulkArchiveTargets } from './archive-model.ts'
 import {
   ARCHIVE_HEADER_CLASS,
   ARCHIVE_ROW_ATTRIBUTE,
@@ -49,7 +49,6 @@ import {
   readWorkspaceRows,
   sidebarRegion,
   sidebarTree,
-  ungroupedSection,
   WORKSPACE_ROW_SELECTOR,
 } from './sidebar-workspace-rows.ts'
 import {
@@ -72,6 +71,17 @@ export type WorkspaceDecorProps =
 export interface WorkspaceDecorInjected {
   /** Select a Session as current; used by the archived rows. */
   openSession: (sessionId: string) => void
+  /**
+   * Archive many Sessions at once; used by the Workspace menu. Fire-and-forget
+   * because the archived group is driven by the Workspace snapshot, so the
+   * rows move on their own as the Host confirms each write.
+   */
+  archiveSessions: (sessionIds: readonly string[]) => void
+  /**
+   * Restore many Sessions out of the archive; used by the archived group's
+   * menus. Fire-and-forget for the same reason as `archiveSessions`.
+   */
+  unarchiveSessions: (sessionIds: readonly string[]) => void
 }
 
 /**
@@ -87,6 +97,8 @@ const REATTACH_MS = 700
 type MenuState =
   | { readonly kind: 'workspace'; readonly workspaceId: string; readonly label: string; readonly x: number; readonly y: number }
   | { readonly kind: 'divider'; readonly dividerId: string; readonly label: string; readonly x: number; readonly y: number }
+  | { readonly kind: 'archiveRow'; readonly sessionId: string; readonly label: string; readonly x: number; readonly y: number }
+  | { readonly kind: 'archiveGroup'; readonly x: number; readonly y: number }
 
 /** In-memory fallback so the component is inert rather than broken headless. */
 function memoryStorage(): DecorStorage {
@@ -125,7 +137,9 @@ export function WorkspaceDecor(props: WorkspaceDecorProps) {
 }
 
 /** The decoration layer proper, mounted only with usable standard hooks. */
-function WorkspaceDecorBody({ t, useWorkspaces, useSessions, openSession }: WorkspaceDecorProps) {
+function WorkspaceDecorBody({
+  t, useWorkspaces, useSessions, openSession, archiveSessions, unarchiveSessions,
+}: WorkspaceDecorProps) {
   const snapshot = useWorkspaces(state => state)
   const sessionsSnapshot = useSessions(state => state)
   // Resolved before the initial state reads it, so both halves share one
@@ -141,6 +155,14 @@ function WorkspaceDecorBody({ t, useWorkspaces, useSessions, openSession }: Work
   const [draft, setDraft] = useState<string | null>(null)
   /** Whether the archived group's rows are shown; the header toggles it. */
   const [archiveExpanded, setArchiveExpanded] = useState(true)
+  /**
+   * Whether the Workspace menu is asking to confirm a bulk archive.
+   *
+   * Bulk archive is the one destructive-feeling action in this menu: it can
+   * move a whole folder's conversations out of the list in one click, and
+   * putting them back is one restore per conversation. So it asks first.
+   */
+  const [confirmBulk, setConfirmBulk] = useState(false)
 
   const workspaceIds = useMemo(
     () => snapshot.items.map(workspace => String(workspace.workspaceId)),
@@ -158,6 +180,27 @@ function WorkspaceDecorBody({ t, useWorkspaces, useSessions, openSession }: Work
     () => archiveRowsOf(archivedIds, sessionsSnapshot.byId),
     [archivedIds, sessionsSnapshot.byId],
   )
+
+  /**
+   * The Sessions a bulk archive would move, for the Workspace the menu is open
+   * on.
+   *
+   * Already-archived ids are filtered out so the count names what will
+   * actually happen. `sessionIds` keeps an archived Session's slot, so without
+   * the filter a folder whose Sessions were all archived would still offer to
+   * archive them again.
+   */
+  const bulkTargets = useMemo((): readonly string[] => {
+    if (menu === null || menu.kind !== 'workspace') return []
+    const workspace = snapshot.items.find(
+      item => String(item.workspaceId) === menu.workspaceId,
+    )
+    if (workspace === undefined) return []
+    // Both sides mapped to plain strings: the ids are branded SessionIds on the
+    // snapshot, and this component works in strings throughout because the DOM
+    // it decorates carries them as attribute values.
+    return bulkArchiveTargets(workspace.sessionIds.map(String), archivedIds.map(String))
+  }, [menu, snapshot.items, archivedIds])
 
   const commit = useCallback((next: WorkspaceDecorState): void => {
     setDecor(next)
@@ -192,18 +235,21 @@ function WorkspaceDecorBody({ t, useWorkspaces, useSessions, openSession }: Work
       const identified = identifyWorkspaceRows(rows, workspaceIds)
       paintFolderColors(identified, decor)
       paintDividers(region, identified, decor)
-      // The archived group lives in the same tree, above the Ungrouped bucket
-      // when one renders. Grouped view only: flat and search views render no
-      // Workspace sections, so there is no bucket to sit above and no group
-      // language to match. An empty row list makes the painter remove any
-      // lingering section, so a view switch cannot leave one behind.
+      // The archived group lives in the same tree, at the very end of it:
+      // below every Workspace section and below the Ungrouped bucket. A null
+      // anchor is what puts it there. It sat above the bucket first, which
+      // read as the archive interrupting the live list rather than closing
+      // it. Grouped view only: flat and search views render no Workspace
+      // sections and no group language to match. An empty row list makes the
+      // painter remove any lingering section, so a view switch cannot leave
+      // one behind.
       const tree = sidebarTree(region)
       if (tree !== null) {
         const grouped = rows.length > 0
         const headerLabel = t('archive.header', { count: String(archiveRows.length) })
         paintArchiveSection(
           tree,
-          ungroupedSection(rows, workspaceIds),
+          null,
           grouped ? archiveRows : [],
           headerLabel,
           archiveExpanded,
@@ -313,6 +359,32 @@ function WorkspaceDecorBody({ t, useWorkspaces, useSessions, openSession }: Work
       const region = sidebarRegion(document)
       if (region === null || !region.contains(target)) return
 
+      // The archived group's own menus come first: a restore action on one
+      // row, and restore-all on the group header. Both are checked before the
+      // Workspace row lookup, because the group sits inside the same tree and
+      // a header is not a Workspace row.
+      const archiveRow = target.closest<HTMLElement>(`[${ARCHIVE_ROW_ATTRIBUTE}]`)
+      if (archiveRow !== null) {
+        const sessionId = archiveRow.getAttribute(ARCHIVE_ROW_ATTRIBUTE)
+        if (sessionId === null) return
+        event.preventDefault()
+        setDraft(null)
+        setMenu({
+          kind: 'archiveRow',
+          sessionId,
+          label: archiveRow.textContent ?? '',
+          x: event.clientX,
+          y: event.clientY,
+        })
+        return
+      }
+      if (target.closest<HTMLElement>(`.${ARCHIVE_HEADER_CLASS}`) !== null) {
+        event.preventDefault()
+        setDraft(null)
+        setMenu({ kind: 'archiveGroup', x: event.clientX, y: event.clientY })
+        return
+      }
+
       const dividerElement = target.closest<HTMLElement>(`[${DIVIDER_ATTRIBUTE}]`)
       if (dividerElement !== null) {
         const dividerId = dividerElement.getAttribute(DIVIDER_ATTRIBUTE)
@@ -348,6 +420,7 @@ function WorkspaceDecorBody({ t, useWorkspaces, useSessions, openSession }: Work
   const close = useCallback((): void => {
     setMenu(null)
     setDraft(null)
+    setConfirmBulk(false)
   }, [])
 
   if (menu === null) return null
@@ -357,7 +430,26 @@ function WorkspaceDecorBody({ t, useWorkspaces, useSessions, openSession }: Work
       draft={draft}
       decor={decor}
       t={t}
+      bulkTargets={bulkTargets}
+      confirmBulk={confirmBulk}
+      archivedCount={archiveRows.length}
       onClose={close}
+      onRestoreOne={() => {
+        if (menu.kind !== 'archiveRow') return
+        unarchiveSessions([menu.sessionId])
+        close()
+      }}
+      onRestoreAll={() => {
+        if (menu.kind !== 'archiveGroup' || archiveRows.length === 0) return
+        unarchiveSessions(archiveRows.map(row => row.id))
+        close()
+      }}
+      onAskBulkArchive={() => { setConfirmBulk(true) }}
+      onConfirmBulkArchive={() => {
+        if (menu.kind !== 'workspace' || bulkTargets.length === 0) return
+        archiveSessions(bulkTargets)
+        close()
+      }}
       onPickColor={(colorId) => {
         if (menu.kind !== 'workspace') return
         commit(setWorkspaceColor(decor, menu.workspaceId, colorId))
@@ -396,7 +488,17 @@ interface DecorMenuProps {
   draft: string | null
   decor: WorkspaceDecorState
   t: (key: WorkspaceDecorLocaleKey, params?: Record<string, string | number>) => string
+  /** Sessions a bulk archive would move; its length drives the menu copy. */
+  bulkTargets: readonly string[]
+  /** Whether the menu is showing the bulk-archive confirmation. */
+  confirmBulk: boolean
+  /** How many Sessions the archived group currently lists. */
+  archivedCount: number
   onClose: () => void
+  onAskBulkArchive: () => void
+  onConfirmBulkArchive: () => void
+  onRestoreOne: () => void
+  onRestoreAll: () => void
   onPickColor: (colorId: string | null) => void
   onAddDivider: () => void
   onStartRename: () => void
@@ -414,7 +516,8 @@ interface DecorMenuProps {
  * belongs to would be worse than one that stays put.
  */
 function DecorMenu({
-  menu, draft, decor, t, onClose, onPickColor, onAddDivider,
+  menu, draft, decor, t, bulkTargets, confirmBulk, archivedCount, onClose, onPickColor,
+  onAddDivider, onAskBulkArchive, onConfirmBulkArchive, onRestoreOne, onRestoreAll,
   onStartRename, onDraftChange, onSubmitRename, onRemoveDivider,
 }: DecorMenuProps) {
   const ref = useRef<HTMLDivElement | null>(null)
@@ -460,9 +563,7 @@ function DecorMenu({
       className="dshWsMenu"
       style={{ left: `${position.left}px`, top: `${position.top}px` }}
       role="menu"
-      aria-label={menu.kind === 'workspace'
-        ? t('menu.workspace.aria', { name: menu.label })
-        : t('menu.divider.aria')}
+      aria-label={menuAriaLabel(menu, t)}
     >
       {menu.kind === 'workspace' && (
         <>
@@ -503,7 +604,62 @@ function DecorMenu({
           <button type="button" className="dshWsMenuItem" role="menuitem" onClick={onAddDivider}>
             {t('divider.add')}
           </button>
+          <div className="dshWsMenuSep" />
+          {confirmBulk
+            ? (
+              <>
+                <div className="dshWsMenuNote">
+                  {t('archive.bulkConfirm', { count: bulkTargets.length })}
+                </div>
+                <button
+                  type="button"
+                  className="dshWsMenuItem"
+                  role="menuitem"
+                  data-danger="true"
+                  onClick={onConfirmBulkArchive}
+                >
+                  {t('archive.bulkConfirmAction')}
+                </button>
+                <button type="button" className="dshWsMenuItem" role="menuitem" onClick={onClose}>
+                  {t('cancel')}
+                </button>
+              </>
+            )
+            : (
+              <button
+                type="button"
+                className="dshWsMenuItem"
+                role="menuitem"
+                // Nothing to archive still renders, greyed, rather than
+                // vanishing: a menu whose items move between folders is harder
+                // to use than one that says why an action is unavailable.
+                disabled={bulkTargets.length === 0}
+                onClick={onAskBulkArchive}
+              >
+                {bulkTargets.length === 0
+                  ? t('archive.bulkEmpty')
+                  : t('archive.bulk', { count: bulkTargets.length })}
+              </button>
+            )}
         </>
+      )}
+
+      {menu.kind === 'archiveRow' && (
+        <button type="button" className="dshWsMenuItem" role="menuitem" onClick={onRestoreOne}>
+          {t('archive.restore')}
+        </button>
+      )}
+
+      {menu.kind === 'archiveGroup' && (
+        <button
+          type="button"
+          className="dshWsMenuItem"
+          role="menuitem"
+          disabled={archivedCount === 0}
+          onClick={onRestoreAll}
+        >
+          {t('archive.restoreAll', { count: archivedCount })}
+        </button>
       )}
 
       {menu.kind === 'divider' && draft === null && (
@@ -543,4 +699,25 @@ function DecorMenu({
       )}
     </div>
   )
+}
+
+/**
+ * The menu's accessible name, which differs per anchor.
+ *
+ * Split out of the render because the menu now has four anchors and a nested
+ * ternary chain over them is unreadable.
+ * @param menu - the open menu's anchor.
+ * @param t - this feature's dictionary.
+ * @returns the localized accessible name.
+ */
+function menuAriaLabel(
+  menu: MenuState,
+  t: DecorMenuProps['t'],
+): string {
+  switch (menu.kind) {
+    case 'workspace': return t('menu.workspace.aria', { name: menu.label })
+    case 'divider': return t('menu.divider.aria')
+    case 'archiveRow': return t('archive.rowAria', { name: menu.label })
+    case 'archiveGroup': return t('archive.groupAria')
+  }
 }

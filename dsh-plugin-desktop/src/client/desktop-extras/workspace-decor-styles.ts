@@ -132,6 +132,19 @@ const CSS = `
   outline-offset: -2px;
 }
 .dshWsMenuItem[data-danger="true"] { color: var(--dsw-alias-state-error-primary, #e5484d); }
+.dshWsMenuItem:disabled {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: default;
+}
+.dshWsMenuItem:disabled:hover { background: transparent; }
+/* The bulk-archive question. Wraps, unlike .dshWsMenuTitle, because it carries
+   a count and has to stay readable rather than clip to one line. */
+.dshWsMenuNote {
+  padding: 6px 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
 
 .dshWsMenuField {
   box-sizing: border-box;

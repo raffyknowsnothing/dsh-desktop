@@ -46,3 +46,26 @@ export function archiveRowsOf(
   }
   return rows
 }
+
+/**
+ * The Sessions a bulk archive of one Workspace would actually move.
+ *
+ * Archiving does not touch Workspace accounting: an archived Session keeps its
+ * slot in `sessionIds` so unarchiving can restore its position. That is why
+ * the archive set has to be subtracted here. Without it, a folder whose
+ * Sessions were all archived already would still report a full count and the
+ * menu would offer to archive them a second time.
+ *
+ * Order follows the Workspace's own manual Session order, so the archive fills
+ * in the order the user sees in the sidebar.
+ * @param sessionIds - the Workspace's accounted Sessions, in display order.
+ * @param archivedIds - the registry-global archive set.
+ * @returns the not-yet-archived ids, in Workspace order.
+ */
+export function bulkArchiveTargets(
+  sessionIds: readonly string[],
+  archivedIds: readonly string[],
+): string[] {
+  const archived = new Set(archivedIds)
+  return sessionIds.filter(id => !archived.has(id))
+}
